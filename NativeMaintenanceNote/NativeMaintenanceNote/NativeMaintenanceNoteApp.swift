@@ -10,6 +10,12 @@ import SwiftData
 
 @main
 struct NativeMaintenanceNoteApp: App {
+    init() {
+        // バックグラウンド再起動時にもSignificant-Change監視が再開されるよう、
+        // 起動直後にシングルトンを生成しておく。
+        _ = LocationLogger.shared
+    }
+
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
             Item.self,
