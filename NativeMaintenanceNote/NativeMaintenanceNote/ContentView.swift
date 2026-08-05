@@ -28,6 +28,13 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     EditButton()
                 }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    NavigationLink {
+                        LocationVerificationView()
+                    } label: {
+                        Label("GPS検証", systemImage: "location")
+                    }
+                }
                 ToolbarItem {
                     Button(action: addItem) {
                         Label("Add Item", systemImage: "plus")
