@@ -35,7 +35,7 @@
 | Web版の扱い | 完全移行し、Web版のメンテナンスは停止する |
 | 開発環境 | **Mac 必須**。Xcode は macOS 専用のため Windows では開発不可 |
 | リポジトリ | `native-maintenance-note`（本リポジトリ）として新規作成済み |
-| Bundle Identifier | `com.ramilen.nativemaintenancenote`（確定・以降変更しない） |
+| Bundle Identifier | `com.ramilen.NativeMaintenanceNote`（確定・以降変更しない） |
 
 ---
 
@@ -51,7 +51,8 @@
 - リスク: Apple の OS アップデートで一時的に動かなくなることが過去に何度かあった（数日〜数週間で復旧する実績はある）。
 
 ### 3.1 技術的な注意点
-- **Bundle Identifier を一貫させること**。再ビルド・再インストールを繰り返す際にBundle IDがぶれると、SwiftDataのローカルデータが消えるリスクがある。→ `com.ramilen.nativemaintenancenote` で確定済み。
+- **Bundle Identifier を一貫させること**。再ビルド・再インストールを繰り返す際にBundle IDがぶれると、SwiftDataのローカルデータが消えるリスクがある。→ `com.ramilen.NativeMaintenanceNote` で確定済み。
+- **大文字小文字にも注意**。Apple の App ID 登録は大文字小文字を区別しないため、無料 Personal Team では既に登録済みの表記（キャメルケース）と異なる大文字小文字でビルドしようとすると「登録できない」エラーになる。実機ビルド時は必ずこの表記のまま使うこと。
 - 万一ローカルデータが消えても、Cloudflare 側に同期データがあれば復元できる（5章参照）。
 
 ---
@@ -104,7 +105,7 @@
   https://github.com/Ramilen-L-Emuruk/native-maintenance-note
 - `.gitignore`: GitHub公式 Swift.gitignore
 - `LICENSE`: MIT
-- Bundle Identifier: `com.ramilen.nativemaintenancenote`（確定・以降変更しない）
+- Bundle Identifier: `com.ramilen.NativeMaintenanceNote`（確定・以降変更しない。§3.1参照）
 - Xcode 26.6 で iOS App テンプレート（SwiftUI, Swift, SwiftData）から初期プロジェクトを生成済み。
   配置: `native-maintenance-note/NativeMaintenanceNote/`（Xcode標準の1階層ネスト構成）
 - `xcode-select` を Command Line Tools から `/Applications/Xcode.app/Contents/Developer` へ切り替え済み。

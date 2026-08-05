@@ -117,5 +117,5 @@
   - `NativeMaintenanceNote/NativeMaintenanceNoteTests/`: ユニットテスト。
   - `NativeMaintenanceNote/NativeMaintenanceNoteUITests/`: UIテスト。
 - `docs/HANDOFF.md`: Web版からの移行検討メモ（動機・設計判断・未解決事項）。
-- Bundle Identifier: `com.ramilen.nativemaintenancenote`（固定・変更しない。理由は `docs/HANDOFF.md` §3.1 参照）。
+- Bundle Identifier: `com.ramilen.NativeMaintenanceNote`（固定・変更しない。理由は `docs/HANDOFF.md` §3.1 参照）。
 - 配布方法: AltStore Classic（無料 Apple ID）を想定。詳細は `docs/HANDOFF.md` §3 参照。
