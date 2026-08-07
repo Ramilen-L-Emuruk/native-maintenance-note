@@ -11,7 +11,7 @@ struct BikeListView: View {
     @Binding var selection: Bike?
 
     @State private var showArchived = false
-    @State private var isPresentingNewBikeForm = false
+    @State private var activeSheet: ActiveSheet?
 
     private var visibleBikes: [Bike] {
         allBikes.filter { showArchived || !$0.archived }
@@ -39,9 +39,16 @@ struct BikeListView: View {
             }
             ToolbarItem {
                 Button {
-                    isPresentingNewBikeForm = true
+                    activeSheet = .newBike
                 } label: {
                     Label("バイクを追加", systemImage: "plus")
+                }
+            }
+            ToolbarItem {
+                Button {
+                    activeSheet = .maintenanceTypeManagement
+                } label: {
+                    Label("整備タイプ管理", systemImage: "wrench.and.screwdriver")
                 }
             }
             ToolbarItem {
@@ -52,12 +59,24 @@ struct BikeListView: View {
                 }
             }
         }
-        .sheet(isPresented: $isPresentingNewBikeForm) {
-            NavigationStack {
-                BikeFormView(bike: nil)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .newBike:
+                NavigationStack {
+                    BikeFormView(bike: nil)
+                }
+            case .maintenanceTypeManagement:
+                MaintenanceTypeManagementView()
             }
         }
     }
+}
+
+private enum ActiveSheet: Identifiable {
+    case newBike
+    case maintenanceTypeManagement
+
+    var id: Self { self }
 }
 
 #Preview {
