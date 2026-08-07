@@ -18,12 +18,18 @@ struct NativeMaintenanceNoteApp: App {
 
     var sharedModelContainer: ModelContainer = {
         let schema = Schema([
-            Item.self,
+            Maker.self,
+            Shop.self,
+            MaintenanceType.self,
+            MaintenancePart.self,
+            InsuranceType.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 
         do {
-            return try ModelContainer(for: schema, configurations: [modelConfiguration])
+            let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
+            SeedData.seedIfNeeded(context: container.mainContext)
+            return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")
         }
