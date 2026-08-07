@@ -8,6 +8,7 @@ import SwiftData
 
 struct BikeDetailView: View {
     @Bindable var bike: Bike
+    @Query(sort: \MaintenanceType.name) private var maintenanceTypes: [MaintenanceType]
     @State private var isPresentingEditForm = false
 
     private static let dateFormat = Date.FormatStyle(date: .numeric)
@@ -34,9 +35,24 @@ struct BikeDetailView: View {
                 }
             }
 
-            Section("整備") {
-                Text("Phase 2で実装予定")
-                    .foregroundStyle(.secondary)
+            ForEach(maintenanceTypes) { type in
+                let parts = type.parts.sorted { $0.name < $1.name }
+                if !parts.isEmpty {
+                    Section(type.name) {
+                        ForEach(parts) { part in
+                            NavigationLink {
+                                MaintenanceRecordListView(bike: bike, part: part)
+                            } label: {
+                                VStack(alignment: .leading) {
+                                    Text(part.name)
+                                    Text(lastMaintenanceSummary(for: part))
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             Section("保険") {
@@ -68,5 +84,13 @@ struct BikeDetailView: View {
                 BikeFormView(bike: bike)
             }
         }
+    }
+
+    private func lastMaintenanceSummary(for part: MaintenancePart) -> String {
+        let lastRecord = part.records
+            .filter { $0.bike?.id == bike.id }
+            .max { $0.maintenanceDate < $1.maintenanceDate }
+        guard let lastRecord else { return "整備記録なし" }
+        return "最終整備: \(lastRecord.maintenanceDate.formatted(Self.dateFormat))"
     }
 }
