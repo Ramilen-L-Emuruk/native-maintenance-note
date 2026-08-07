@@ -16,6 +16,9 @@ final class MaintenancePart {
     var notification: Bool
     var isSeeded: Bool
 
+    @Relationship(deleteRule: .cascade, inverse: \MaintenanceRecord.part)
+    var records: [MaintenanceRecord] = []
+
     init(
         id: UUID = UUID(),
         type: MaintenanceType?,

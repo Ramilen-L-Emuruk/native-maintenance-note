@@ -23,6 +23,9 @@ final class Bike {
     var memo: String
     var archived: Bool
 
+    @Relationship(deleteRule: .cascade, inverse: \MaintenanceRecord.bike)
+    var maintenanceRecords: [MaintenanceRecord] = []
+
     init(
         id: UUID = UUID(),
         maker: Maker?,
