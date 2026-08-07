@@ -31,8 +31,7 @@ struct BikeFormView: View {
     @State private var memo: String
     @State private var archived: Bool
 
-    @State private var isPresentingAddMaker = false
-    @State private var isPresentingAddShop = false
+    @State private var activeSheet: ActiveSheet?
     @State private var isPresentingDeleteConfirmation = false
 
     init(bike: Bike?) {
@@ -73,7 +72,7 @@ struct BikeFormView: View {
                     }
                 }
                 Button("メーカーを追加") {
-                    isPresentingAddMaker = true
+                    activeSheet = .addMaker
                 }
 
                 TextField("排気量(cc)", text: $displacementText)
@@ -88,7 +87,7 @@ struct BikeFormView: View {
                     }
                 }
                 Button("購入店を追加") {
-                    isPresentingAddShop = true
+                    activeSheet = .addShop
                 }
 
                 Toggle("購入日を設定", isOn: $hasPurchaseDate)
@@ -137,14 +136,16 @@ struct BikeFormView: View {
                     .disabled(!isValid)
             }
         }
-        .sheet(isPresented: $isPresentingAddMaker) {
-            AddMakerSheet { newMaker in
-                selectedMaker = newMaker
-            }
-        }
-        .sheet(isPresented: $isPresentingAddShop) {
-            AddShopSheet { newShop in
-                selectedShop = newShop
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .addMaker:
+                AddMakerSheet { newMaker in
+                    selectedMaker = newMaker
+                }
+            case .addShop:
+                AddShopSheet { newShop in
+                    selectedShop = newShop
+                }
             }
         }
         .confirmationDialog(
@@ -200,6 +201,13 @@ struct BikeFormView: View {
         }
         dismiss()
     }
+}
+
+private enum ActiveSheet: Identifiable {
+    case addMaker
+    case addShop
+
+    var id: Self { self }
 }
 
 #Preview {
