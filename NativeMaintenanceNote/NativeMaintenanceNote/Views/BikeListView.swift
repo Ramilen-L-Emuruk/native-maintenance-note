@@ -52,6 +52,13 @@ struct BikeListView: View {
                 }
             }
             ToolbarItem {
+                Button {
+                    activeSheet = .insuranceTypeManagement
+                } label: {
+                    Label("保険タイプ管理", systemImage: "shield")
+                }
+            }
+            ToolbarItem {
                 NavigationLink {
                     LocationVerificationView()
                 } label: {
@@ -67,6 +74,8 @@ struct BikeListView: View {
                 }
             case .maintenanceTypeManagement:
                 MaintenanceTypeManagementView()
+            case .insuranceTypeManagement:
+                InsuranceTypeManagementView()
             }
         }
     }
@@ -75,6 +84,7 @@ struct BikeListView: View {
 private enum ActiveSheet: Identifiable {
     case newBike
     case maintenanceTypeManagement
+    case insuranceTypeManagement
 
     var id: Self { self }
 }

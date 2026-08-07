@@ -9,6 +9,7 @@ import SwiftData
 struct BikeDetailView: View {
     @Bindable var bike: Bike
     @Query(sort: \MaintenanceType.name) private var maintenanceTypes: [MaintenanceType]
+    @Query(sort: \InsuranceType.name) private var insuranceTypes: [InsuranceType]
     @State private var isPresentingEditForm = false
 
     private static let dateFormat = Date.FormatStyle(date: .numeric)
@@ -56,8 +57,18 @@ struct BikeDetailView: View {
             }
 
             Section("保険") {
-                Text("Phase 3で実装予定")
-                    .foregroundStyle(.secondary)
+                ForEach(insuranceTypes) { type in
+                    NavigationLink {
+                        InsuranceRecordListView(bike: bike, type: type)
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(type.name)
+                            Text(lastInsuranceSummary(for: type))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
             }
 
             Section("給油") {
@@ -92,5 +103,13 @@ struct BikeDetailView: View {
             .max { $0.maintenanceDate < $1.maintenanceDate }
         guard let lastRecord else { return "整備記録なし" }
         return "最終整備: \(lastRecord.maintenanceDate.formatted(Self.dateFormat))"
+    }
+
+    private func lastInsuranceSummary(for type: InsuranceType) -> String {
+        let lastRecord = type.records
+            .filter { $0.bike?.id == bike.id }
+            .max { $0.finishDate < $1.finishDate }
+        guard let lastRecord else { return "契約記録なし" }
+        return "満了日: \(lastRecord.finishDate.formatted(Self.dateFormat))"
     }
 }
