@@ -4,59 +4,53 @@
 //
 //  Created by 西辻怜央 on 2026/08/06.
 //
+//  Phase 0時点の暫定表示。シードデータが投入されていることを確認するための
+//  デバッグ用リストで、Phase 1でBikeベースのNavigationSplitViewに置き換える。
+//
 
 import SwiftUI
 import SwiftData
 
 struct ContentView: View {
-    @Environment(\.modelContext) private var modelContext
-    @Query private var items: [Item]
+    @Query(sort: \Maker.name) private var makers: [Maker]
+    @Query(sort: \MaintenanceType.name) private var maintenanceTypes: [MaintenanceType]
+    @Query(sort: \InsuranceType.name) private var insuranceTypes: [InsuranceType]
 
     var body: some View {
-        NavigationSplitView {
+        NavigationStack {
             List {
-                ForEach(items) { item in
-                    NavigationLink {
-                        Text("Item at \(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))")
-                    } label: {
-                        Text(item.timestamp, format: Date.FormatStyle(date: .numeric, time: .standard))
+                Section("メーカー（\(makers.count)件）") {
+                    ForEach(makers) { maker in
+                        Text(maker.name)
                     }
                 }
-                .onDelete(perform: deleteItems)
-            }
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    EditButton()
+
+                Section("整備タイプ（\(maintenanceTypes.count)件）") {
+                    ForEach(maintenanceTypes) { type in
+                        VStack(alignment: .leading) {
+                            Text(type.name)
+                            Text("部品数: \(type.parts.count)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+
+                Section("保険タイプ（\(insuranceTypes.count)件）") {
+                    ForEach(insuranceTypes) { type in
+                        Text(type.name)
+                    }
+                }
+            }
+            .navigationTitle("シードデータ確認")
+            .toolbar {
+                ToolbarItem {
                     NavigationLink {
                         LocationVerificationView()
                     } label: {
                         Label("GPS検証", systemImage: "location")
                     }
                 }
-                ToolbarItem {
-                    Button(action: addItem) {
-                        Label("Add Item", systemImage: "plus")
-                    }
-                }
-            }
-        } detail: {
-            Text("Select an item")
-        }
-    }
-
-    private func addItem() {
-        withAnimation {
-            let newItem = Item(timestamp: Date())
-            modelContext.insert(newItem)
-        }
-    }
-
-    private func deleteItems(offsets: IndexSet) {
-        withAnimation {
-            for index in offsets {
-                modelContext.delete(items[index])
             }
         }
     }
@@ -64,5 +58,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: Item.self, inMemory: true)
+        .modelContainer(for: [Maker.self, MaintenanceType.self, MaintenancePart.self, InsuranceType.self], inMemory: true)
 }
