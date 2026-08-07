@@ -60,3 +60,6 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+
+# Web版からのバックアップデータ(個人の実データ。Phase 5のJSONインポート検証用)
+docs/*.json
