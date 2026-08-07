@@ -13,6 +13,9 @@ final class InsuranceType {
     var notification: Bool
     var isSeeded: Bool
 
+    @Relationship(deleteRule: .cascade, inverse: \InsuranceRecord.type)
+    var records: [InsuranceRecord] = []
+
     init(id: UUID = UUID(), name: String, notification: Bool = false, isSeeded: Bool = false) {
         self.id = id
         self.name = name
