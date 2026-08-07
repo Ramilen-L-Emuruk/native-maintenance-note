@@ -71,10 +71,17 @@
 - 移動検知後に通常の継続更新へ切り替えることで、精度と電池のバランスを取る。停止を検知したら Significant-Change のみの待機モードへ戻す。
 - `distanceFilter` は 10〜20m 程度が現実的な落としどころ（`kCLDistanceFilterNone` は精度最高だが電池を大きく消費する）。
 
-### 未解決のリスク
-- **無料 Personal Team で Background Modes（location）が安定動作するかは未検証**。フォーラム上で制限の報告があり、実機検証が必要。
+### 実機検証結果（2026/08/07）
+- 無料 Personal Team（実機: Ramilen's iPhone15PM）に、Significant-Change Location Serviceのみを使う最小スキャフォールド（`LocationLogger.swift`）をインストールして検証。
+- 権限フローは「未決定 → 使用中のみ許可 → 常に許可」の2段階昇格がダイアログ操作のみで完了（Settingsアプリへの誘導は不要だった）。
+- アプリを完全終了させた状態で約15時間・広範囲（福岡市内、緯度33.25〜33.59/経度130.4〜130.55）を移動し、45件の位置更新ログを記録。
+- ログ中、`locationManagerDidChangeAuthorization`（CLLocationManager新規初期化時に必ず1回発火する）が離れた時刻に複数回記録されており、うち少なくとも2回はユーザーがアプリを手動で開いていないタイミングだった。これは**OSによるバックグラウンド再起動が実際に機能した**ことを示す強い状況証拠。
+- **結論**: 無料 Personal Team でも Background Modes（location, Significant-Change方式）は実用レベルで動作すると判断。完全な確証（Xcodeのデバッグログ等での直接確認）ではないが、実運用上は問題ないレベルの根拠が得られた。
+
+### 残っているリスク
 - **長期ツーリング（7日以上）と AltStore Classic の再署名ルールが衝突する可能性**。証明書失効は基本的に「新規起動のブロック」であり、動作中のバックグラウンド処理を即座に止めるものではない可能性が高いが、確証はない。旅先でアプリを開けなくなるリスクは残る。
 - 「常に許可」の位置情報権限は2段階の同意フロー（まず「使用中のみ」→ 後から「常に」への昇格）が必要。iOSが定期的に「バックグラウンドで位置情報を使用しています」という確認ダイアログを出すのは正常な仕様。
+- 今回検証したのはSignificant-Changeのみ。移動検知後のCore Motion連携・継続的位置情報更新（表の2行目）は未実装・未検証のまま。
 
 ---
 
@@ -110,14 +117,14 @@
   配置: `native-maintenance-note/NativeMaintenanceNote/`（Xcode標準の1階層ネスト構成）
 - `xcode-select` を Command Line Tools から `/Applications/Xcode.app/Contents/Developer` へ切り替え済み。
 
-### 未解決: 無料 vs 有料（Apple Developer Program, $99/年）
-以下3つの理由から、有料化も検討の余地がある。**実機検証してから最終判断する**方針で保留中。
+### 決定: 無料のまま進める（2026/08/07判断）
+§4の実機検証結果を踏まえ、**当面は無料 Personal Teamのまま開発を進める**ことに決定。
 
-1. iCloud/CloudKit を使いたい場合は有料必須
-2. 無料 Personal Team での Background Modes（GPS）の安定性が未検証
-3. 長期ツーリング中（7日超）の AltStore Classic 署名失効リスク
+- iCloud/CloudKit を使いたい場合は有料必須 → 今回は不採用（§5の通りCloudflare Workers + D1で代替するため無関係）
+- 無料 Personal Team での Background Modes（GPS）の安定性 → §4の実機検証で概ね良好と確認
+- 長期ツーリング中（7日超）の AltStore Classic 署名失効リスク → 残存リスクとして引き続き注視（§4「残っているリスク」参照）
 
-有料化した場合のメリット: 上記3つが全て解消し、AltStore Classicの週次メンテナンスも不要になる（Ad-Hoc配布やTestFlightに切り替え可能）。Cloudflare同期は有料化後もそのまま使い続けて問題ない。
+有料化（Apple Developer Program, $99/年）は上記の残存リスクが実際に問題化した場合に再検討する。有料化した場合のメリット: AltStore Classicの週次メンテナンスが不要になる（Ad-Hoc配布やTestFlightに切り替え可能）。Cloudflare同期は有料化後もそのまま使い続けて問題ない。
 
 ### 完了: CLAUDE.md の作成
 - このリポジトリ用の CLAUDE.md（ビルド確認コマンド、テスト方針、コミット規約等）は作成済み。
@@ -126,15 +133,13 @@
 
 ## 8. 次のアクション
 
-> **順序の意図**: 無料/有料判断は §4 の Background Modes 検証結果に依存する。実装計画（フェーズ分割）を先に固めても、検証結果次第でGPS設計・同期方式の前提が変わり得るため、**検証と土台固めを実装計画より先に行う**。
-
-1. **実機での Background Modes（GPS）検証を最優先で実施**し、無料/有料判断を確定させる。この結果が同期方式（CloudKit採用可否）・GPSロギング設計の前提を左右するため、他の実装より前に行う。
-2. `planner` エージェント or 計画モードで、以下のフェーズ分割を実装計画に落とし込む（1 の検証結果を踏まえて着手）
+1. ~~実機での Background Modes（GPS）検証を最優先で実施し、無料/有料判断を確定させる~~（完了。§4・§7参照。無料 Personal Teamのまま進める判断）
+2. `planner` エージェント or 計画モードで、以下のフェーズ分割を実装計画に落とし込む
    - データモデル（SwiftData）設計
    - 基本CRUD画面の実装
    - 燃費計算・グラフ（Swift Charts）
    - 通知機能（UserNotifications）
-   - GPSロギング（Significant-Change + Core Motion のハイブリッド設計）
+   - GPSロギング本実装（今回検証したSignificant-Changeに加えて、Core Motion連携・移動検知後の継続的位置情報更新を実装。検証用の`LocationLogger.swift`/`LocationVerificationView.swift`は本実装に置き換える想定）
    - Cloudflare Workers + D1 の同期API構築
    - Liquid Glass デザインの磨き込み
    - AltStore Classic での配布設定
