@@ -65,6 +65,13 @@ struct BikeListView: View {
                     Label("GPS検証", systemImage: "location")
                 }
             }
+            ToolbarItem {
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Label("設定", systemImage: "gearshape")
+                }
+            }
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
