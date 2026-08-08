@@ -26,6 +26,7 @@ struct NativeMaintenanceNoteApp: App {
             Bike.self,
             MaintenanceRecord.self,
             InsuranceRecord.self,
+            RefuelRecord.self,
         ])
         let modelConfiguration = ModelConfiguration(schema: schema, isStoredInMemoryOnly: false)
 

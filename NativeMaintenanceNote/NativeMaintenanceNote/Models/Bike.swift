@@ -29,6 +29,9 @@ final class Bike {
     @Relationship(deleteRule: .cascade, inverse: \InsuranceRecord.bike)
     var insuranceRecords: [InsuranceRecord] = []
 
+    @Relationship(deleteRule: .cascade, inverse: \RefuelRecord.bike)
+    var refuelRecords: [RefuelRecord] = []
+
     init(
         id: UUID = UUID(),
         maker: Maker?,
