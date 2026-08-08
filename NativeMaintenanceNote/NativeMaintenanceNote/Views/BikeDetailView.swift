@@ -72,8 +72,11 @@ struct BikeDetailView: View {
             }
 
             Section("給油") {
-                Text("Phase 4で実装予定")
-                    .foregroundStyle(.secondary)
+                NavigationLink {
+                    RefuelListView(bike: bike)
+                } label: {
+                    Text("給油履歴・燃費")
+                }
             }
 
             if !bike.memo.isEmpty {
