@@ -76,6 +76,7 @@ struct InsuranceTypeFormView: View {
             let newType = InsuranceType(name: name, notification: notification)
             modelContext.insert(newType)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 
@@ -83,6 +84,7 @@ struct InsuranceTypeFormView: View {
         if let type {
             modelContext.delete(type)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 }

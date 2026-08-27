@@ -33,6 +33,7 @@ struct NativeMaintenanceNoteApp: App {
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
             SeedData.seedIfNeeded(context: container.mainContext)
+            NotificationScheduler.rescheduleAll(context: container.mainContext)
             return container
         } catch {
             fatalError("Could not create ModelContainer: \(error)")

@@ -108,6 +108,7 @@ struct MaintenancePartFormView: View {
             )
             modelContext.insert(newPart)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 
@@ -115,6 +116,7 @@ struct MaintenancePartFormView: View {
         if let part {
             modelContext.delete(part)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 }

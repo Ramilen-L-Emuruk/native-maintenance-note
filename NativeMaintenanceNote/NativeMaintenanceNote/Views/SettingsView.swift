@@ -2,13 +2,14 @@
 //  SettingsView.swift
 //  NativeMaintenanceNote
 //
-//  現時点ではWeb版バックアップのインポート導線のみ。
-//  エクスポート・通知設定・about等はPhase 9で拡充予定。
+//  Web版バックアップのインポート導線と通知設定。
+//  エクスポート・about等はPhase 9で拡充予定。
 //
 
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import UserNotifications
 
 struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
@@ -21,8 +22,35 @@ struct SettingsView: View {
     @State private var importSummary: ImportSummary?
     @State private var errorMessage: String?
 
+    @State private var authorizationStatus: UNAuthorizationStatus = .notDetermined
+    @State private var leadDays = NotificationScheduler.leadDays
+
     var body: some View {
         List {
+            Section("通知") {
+                switch authorizationStatus {
+                case .authorized, .provisional:
+                    LabeledContent("通知の許可", value: "許可済み")
+                    Stepper("何日前に通知するか: \(leadDays)日前", value: $leadDays, in: 1...30)
+                        .onChange(of: leadDays) { _, newValue in
+                            NotificationScheduler.leadDays = newValue
+                            NotificationScheduler.rescheduleAll(context: modelContext)
+                        }
+                case .denied:
+                    LabeledContent("通知の許可", value: "許可されていません")
+                    Text("端末の設定アプリから通知を許可してちょうだい。")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                default:
+                    Button("通知を許可する") {
+                        NotificationScheduler.requestAuthorization { _ in
+                            refreshAuthorizationStatus()
+                            NotificationScheduler.rescheduleAll(context: modelContext)
+                        }
+                    }
+                }
+            }
+
             Section("データ移行") {
                 Button("Web版バックアップをインポート") {
                     isPresentingFileImporter = true
@@ -30,6 +58,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("設定")
+        .onAppear { refreshAuthorizationStatus() }
         .fileImporter(isPresented: $isPresentingFileImporter, allowedContentTypes: [.json]) { result in
             handleFileSelection(result)
         }
@@ -105,6 +134,7 @@ struct SettingsView: View {
         let summary = BackupImporter.execute(pendingDTO, context: modelContext)
         do {
             try modelContext.save()
+            NotificationScheduler.rescheduleAll(context: modelContext)
             isImporting = false
             summaryToShowAfterDismiss = summary
             self.pendingDTO = nil
@@ -112,6 +142,12 @@ struct SettingsView: View {
         } catch {
             isImporting = false
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func refreshAuthorizationStatus() {
+        NotificationScheduler.authorizationStatus { status in
+            authorizationStatus = status
         }
     }
 }
