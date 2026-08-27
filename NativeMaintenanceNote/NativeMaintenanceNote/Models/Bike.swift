@@ -20,6 +20,7 @@ final class Bike {
     var totalMileage: Int
     var imageFilenames: [String]
     var inspectionExpiryDate: Date?
+    var inspectionNotification: Bool = false
     var memo: String
     var archived: Bool
 
@@ -45,6 +46,7 @@ final class Bike {
         totalMileage: Int = 0,
         imageFilenames: [String] = [],
         inspectionExpiryDate: Date? = nil,
+        inspectionNotification: Bool = false,
         memo: String = "",
         archived: Bool = false
     ) {
@@ -60,6 +62,7 @@ final class Bike {
         self.totalMileage = totalMileage
         self.imageFilenames = imageFilenames
         self.inspectionExpiryDate = inspectionExpiryDate
+        self.inspectionNotification = inspectionNotification
         self.memo = memo
         self.archived = archived
     }
