@@ -38,6 +38,8 @@ struct InsuranceTypeFormView: View {
 
             Section {
                 Toggle("通知を有効にする", isOn: $notification)
+            } footer: {
+                Text("このタイプで登録した保険記録が、満了日の通知対象になります。通知する時期は設定画面で変更できます。")
             }
 
             if isEditing {

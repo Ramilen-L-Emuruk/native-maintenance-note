@@ -4,16 +4,32 @@
 //
 //  保険満了・車検満了・整備部品の周期をUNUserNotificationCenterへローカル通知として予約する。
 //  再スケジュール時は毎回既存の通知をすべて破棄してから、対象データを走査し直す方式。
+//  ただしデータの取得に失敗した場合は破棄も走査も行わず、既存の予約をそのまま残す。
+//
+//  ひとつの期限につき、リード日と期限日当日の2回ぶんを予約する。
+//
+//  配信日時は必ず「絶対日時」で決める。現在時刻からの相対指定(UNTimeIntervalNotificationTrigger)も、
+//  「現在時刻の直後の通知時刻」のような算出も使わない。再構築は前面復帰のたびに走るため、
+//  nowに依存させると組み直すたびに配信予定がずれ、届く回数も「アプリを開いたかどうか」で変わる。
+//
+//  走行距離ベースの周期(MaintenancePart.intervalDistance)は対象外。ローカル通知は日時でしか
+//  予約できず、走行距離の到達を日時へ変換できないため、別の仕組みが必要になる。
 //
 
 import Foundation
+import OSLog
 import SwiftData
 import UserNotifications
 
 enum NotificationScheduler {
+    private static let logger = Logger(subsystem: "com.ramilen.NativeMaintenanceNote", category: "NotificationScheduler")
+
     private static let leadDaysKey = "notificationLeadDays"
     static let defaultLeadDays = 7
+    /// 通知を配信する時刻（時）。分は0に固定する。
     static let fireHour = 9
+    /// iOSが1アプリあたりに保持する保留中ローカル通知の上限。これを超える分はOSが受け付けない。
+    static let maxPendingRequests = 64
 
     static var leadDays: Int {
         get {
@@ -24,7 +40,10 @@ enum NotificationScheduler {
     }
 
     static func requestAuthorization(completion: ((Bool) -> Void)? = nil) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error {
+                logger.error("通知の許可要求に失敗: \(error.localizedDescription, privacy: .public)")
+            }
             DispatchQueue.main.async { completion?(granted) }
         }
     }
@@ -43,13 +62,30 @@ enum NotificationScheduler {
         center.getNotificationSettings { settings in
             DispatchQueue.main.async {
                 guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                    logger.notice("通知が許可されていないため、予約済みの通知をすべて取り消した")
                     center.removeAllPendingNotificationRequests()
                     return
                 }
-                let items = buildItems(context: context, leadDays: leadDays)
+                let items: [ReminderItem]
+                do {
+                    items = try buildItems(context: context, leadDays: leadDays)
+                } catch {
+                    // 取得に失敗した状態で組み直すと、正しく予約できていた他の種別まで巻き添えで消える。
+                    // 既存の予約を残したまま今回の再構築を見送り、次の機会に作り直す。
+                    //
+                    // この中断経路は自動テストで検証できていない。ModelContextのfetchを
+                    // 意図的に失敗させる手段がなく、検証にはUNUserNotificationCenterの抽象化が要るため。
+                    // ここを触るときは手動で確かめること。
+                    logger.error("通知の再構築を中止し、既存の予約を維持した: \(error.localizedDescription, privacy: .public)")
+                    return
+                }
                 center.removeAllPendingNotificationRequests()
                 for item in items {
-                    center.add(item.makeRequest())
+                    center.add(item.makeRequest()) { error in
+                        if let error {
+                            logger.error("通知の予約に失敗(\(item.identifier, privacy: .public)): \(error.localizedDescription, privacy: .public)")
+                        }
+                    }
                 }
             }
         }
@@ -59,6 +95,7 @@ enum NotificationScheduler {
         let identifier: String
         let title: String
         let body: String
+        /// 通知を配信する日時。fireHourへ丸めた絶対日時。
         let fireDate: Date
 
         func makeRequest() -> UNNotificationRequest {
@@ -67,17 +104,28 @@ enum NotificationScheduler {
             content.body = body
             content.sound = .default
 
-            var components = Calendar.current.dateComponents([.year, .month, .day], from: fireDate)
-            components.hour = fireHour
-            components.minute = 0
+            // fireDateは既にfireHourへ丸めてあるため、時・分も含めてそのまま指定する。
+            // 年月日だけを指定して時刻を後から上書きすると、判定に使った日時と実際の予約日時がずれる。
+            let components = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute], from: fireDate)
             let trigger = UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
             return UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
         }
     }
 
-    /// 満了日/期限日から、リード日数を引いた通知発火日を求める。
-    static func fireDate(for dueDate: Date, leadDays: Int, calendar: Calendar = .current) -> Date {
-        calendar.date(byAdding: .day, value: -leadDays, to: dueDate) ?? dueDate
+    /// 満了日/期限日からリード日数を引き、通知時刻（fireHour時00分）へ丸めた日時を返す。
+    static func scheduledFireDate(for dueDate: Date, leadDays: Int, calendar: Calendar = .current) -> Date? {
+        guard let leadDate = calendar.date(byAdding: .day, value: -leadDays, to: dueDate) else {
+            logger.error("通知予定日の算出に失敗: leadDays=\(leadDays)")
+            return nil
+        }
+        var components = calendar.dateComponents([.year, .month, .day], from: leadDate)
+        components.hour = fireHour
+        components.minute = 0
+        guard let fireDate = calendar.date(from: components) else {
+            logger.error("通知予定日の時刻丸めに失敗: leadDays=\(leadDays)")
+            return nil
+        }
+        return fireDate
     }
 
     /// 整備部品の周期（intervalDays）から次回目安日を求める。最終整備記録がなければ計算不能。
@@ -85,53 +133,140 @@ enum NotificationScheduler {
         calendar.date(byAdding: .day, value: intervalDays, to: lastMaintenanceDate)
     }
 
-    static func buildItems(context: ModelContext, leadDays: Int, now: Date = Date(), calendar: Calendar = .current) -> [ReminderItem] {
+    /// ひとつの期限につき、リード日と期限日当日の2回ぶんの通知を作る。
+    /// すでに過ぎた時刻のものは作らない（両方過ぎていれば空を返す）。
+    ///
+    /// **2件を最初から予約するのは、配信回数を再構築のタイミングに依存させないため。**
+    /// 「予定日を過ぎていたら期限日へ寄せる」方式だと、リード日を過ぎたあとにアプリを
+    /// 開いたかどうかで届く回数が変わる（開けば2回・開かなければ1回）。
+    /// どちらの日時もdueDateとleadDaysだけから決まるので、何度組み直しても結果は同じ。
+    static func makeReminders(
+        identifierPrefix: String,
+        leadTitle: String,
+        dueTitle: String,
+        body: String,
+        dueDate: Date,
+        leadDays: Int,
+        now: Date,
+        calendar: Calendar
+    ) -> [ReminderItem] {
+        var reminders: [ReminderItem] = []
+        // leadDaysが0だと期限日当日の通知と同じ日時になるため、リード日側は作らない。
+        if leadDays > 0,
+           let leadFire = scheduledFireDate(for: dueDate, leadDays: leadDays, calendar: calendar),
+           leadFire > now {
+            reminders.append(ReminderItem(
+                identifier: "\(identifierPrefix)-lead",
+                title: leadTitle,
+                body: body,
+                fireDate: leadFire
+            ))
+        }
+        if let dueFire = scheduledFireDate(for: dueDate, leadDays: 0, calendar: calendar), dueFire > now {
+            reminders.append(ReminderItem(
+                identifier: "\(identifierPrefix)-due",
+                title: dueTitle,
+                body: body,
+                fireDate: dueFire
+            ))
+        }
+        return reminders
+    }
+
+    /// 通知対象を組み立てる。
+    /// データの取得に失敗した場合はエラーを投げる。一部だけ欠けたリストを返すと、
+    /// 呼び出し側がそれを正常な結果として既存の予約を置き換えてしまうため。
+    static func buildItems(context: ModelContext, leadDays: Int, now: Date = Date(), calendar: Calendar = .current) throws -> [ReminderItem] {
         var items: [ReminderItem] = []
 
-        let insuranceRecords = (try? context.fetch(FetchDescriptor<InsuranceRecord>())) ?? []
-        for record in insuranceRecords {
+        for record in try fetchAll(InsuranceRecord.self, context: context) {
             guard record.type?.notification == true else { continue }
-            let fire = fireDate(for: record.finishDate, leadDays: leadDays, calendar: calendar)
-            guard fire > now else { continue }
+            guard record.bike?.archived != true else { continue }
             let bikeName = record.bike?.name ?? ""
-            items.append(ReminderItem(
-                identifier: "insurance-\(record.id.uuidString)",
-                title: "保険の満了が近づいています",
+            items += makeReminders(
+                identifierPrefix: "insurance-\(record.id.uuidString)",
+                leadTitle: "保険の満了が近づいています",
+                dueTitle: "本日、保険が満了します",
                 body: "\(bikeName) \(record.name)（\(dateString(record.finishDate))まで）",
-                fireDate: fire
-            ))
+                dueDate: record.finishDate,
+                leadDays: leadDays,
+                now: now,
+                calendar: calendar
+            )
         }
 
-        let bikes = (try? context.fetch(FetchDescriptor<Bike>())) ?? []
-        for bike in bikes {
+        for bike in try fetchAll(Bike.self, context: context) {
             guard !bike.archived, bike.inspectionNotification, let expiry = bike.inspectionExpiryDate else { continue }
-            let fire = fireDate(for: expiry, leadDays: leadDays, calendar: calendar)
-            guard fire > now else { continue }
-            items.append(ReminderItem(
-                identifier: "inspection-\(bike.id.uuidString)",
-                title: "車検満了が近づいています",
+            items += makeReminders(
+                identifierPrefix: "inspection-\(bike.id.uuidString)",
+                leadTitle: "車検満了が近づいています",
+                dueTitle: "本日、車検が満了します",
                 body: "\(bike.name)の車検満了日は\(dateString(expiry))",
-                fireDate: fire
-            ))
+                dueDate: expiry,
+                leadDays: leadDays,
+                now: now,
+                calendar: calendar
+            )
         }
 
-        let parts = (try? context.fetch(FetchDescriptor<MaintenancePart>())) ?? []
-        for part in parts {
+        // MaintenancePartはバイクを持たない共有カタログで、複数のバイクが同じ部品を参照しうる。
+        // 全記録から最新1件だけを採ると、直近に整備したバイク以外の次回目安日が消えるため、
+        // 記録側のバイクごとに分けて目安日を求める。
+        // 各部品の記録を1回ずつ見るため、走査量は整備記録の総件数に比例する。
+        for part in try fetchAll(MaintenancePart.self, context: context) {
             guard part.notification, let intervalDays = part.intervalDays else { continue }
-            guard let lastRecord = part.records.max(by: { $0.maintenanceDate < $1.maintenanceDate }) else { continue }
-            guard let dueDate = nextMaintenanceDueDate(lastMaintenanceDate: lastRecord.maintenanceDate, intervalDays: intervalDays, calendar: calendar) else { continue }
-            let fire = fireDate(for: dueDate, leadDays: leadDays, calendar: calendar)
-            guard fire > now else { continue }
-            let bikeName = lastRecord.bike?.name ?? ""
-            items.append(ReminderItem(
-                identifier: "maintenancePart-\(part.id.uuidString)",
-                title: "整備時期が近づいています",
-                body: "\(bikeName) \(part.name)（目安 \(dateString(dueDate))）",
-                fireDate: fire
-            ))
+            for entry in latestRecordByBike(part: part) {
+                guard !entry.bike.archived else { continue }
+                guard let dueDate = nextMaintenanceDueDate(
+                    lastMaintenanceDate: entry.record.maintenanceDate,
+                    intervalDays: intervalDays,
+                    calendar: calendar
+                ) else {
+                    logger.error("次回整備目安日の算出に失敗: intervalDays=\(intervalDays)")
+                    continue
+                }
+                items += makeReminders(
+                    identifierPrefix: "maintenancePart-\(part.id.uuidString)-\(entry.bike.id.uuidString)",
+                    leadTitle: "整備時期が近づいています",
+                    dueTitle: "本日、整備の目安日を迎えます",
+                    body: "\(entry.bike.name) \(part.name)（目安 \(dateString(dueDate))）",
+                    dueDate: dueDate,
+                    leadDays: leadDays,
+                    now: now,
+                    calendar: calendar
+                )
+            }
         }
 
-        return items
+        // 保留できる通知には上限があり、超過分はOSに受け付けられない。
+        // どれが落ちるかをOS任せにせず、配信日の近いものから残す。
+        let sorted = items.sorted { $0.fireDate < $1.fireDate }
+        if sorted.count > maxPendingRequests {
+            logger.notice("保留通知の上限(\(maxPendingRequests))を超えたため、配信日の遠い\(sorted.count - maxPendingRequests)件を除外した")
+        }
+        return Array(sorted.prefix(maxPendingRequests))
+    }
+
+    /// 部品の整備記録をバイク単位にまとめ、それぞれの最新記録を返す。
+    private static func latestRecordByBike(part: MaintenancePart) -> [(bike: Bike, record: MaintenanceRecord)] {
+        var latestByBikeID: [UUID: (bike: Bike, record: MaintenanceRecord)] = [:]
+        for record in part.records {
+            guard let bike = record.bike else { continue }
+            if let current = latestByBikeID[bike.id], current.record.maintenanceDate >= record.maintenanceDate { continue }
+            latestByBikeID[bike.id] = (bike, record)
+        }
+        return Array(latestByBikeID.values)
+    }
+
+    /// 取得に失敗したらログを残したうえでエラーを投げ、呼び出し側に再構築を中止させる。
+    /// 空配列を返して続行すると、失敗した種別だけが欠けたリストが「正常な結果」として扱われる。
+    private static func fetchAll<T: PersistentModel>(_ type: T.Type, context: ModelContext) throws -> [T] {
+        do {
+            return try context.fetch(FetchDescriptor<T>())
+        } catch {
+            logger.error("\(String(describing: type), privacy: .public)の取得に失敗: \(error.localizedDescription, privacy: .public)")
+            throw error
+        }
     }
 
     private static func dateString(_ date: Date) -> String {

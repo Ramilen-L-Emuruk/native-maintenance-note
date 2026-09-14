@@ -3,7 +3,7 @@
 //  NativeMaintenanceNote
 //
 //  Web版バックアップのインポート導線と通知設定。
-//  エクスポート・about等はPhase 9で拡充予定。
+//  エクスポート・about等は今後のフェーズで拡充予定。
 //
 
 import SwiftUI
@@ -27,18 +27,18 @@ struct SettingsView: View {
 
     var body: some View {
         List {
-            Section("通知") {
+            Section {
                 switch authorizationStatus {
                 case .authorized, .provisional:
                     LabeledContent("通知の許可", value: "許可済み")
-                    Stepper("何日前に通知するか: \(leadDays)日前", value: $leadDays, in: 1...30)
+                    Stepper("通知する時期: \(leadDays)日前", value: $leadDays, in: 1...30)
                         .onChange(of: leadDays) { _, newValue in
                             NotificationScheduler.leadDays = newValue
                             NotificationScheduler.rescheduleAll(context: modelContext)
                         }
                 case .denied:
                     LabeledContent("通知の許可", value: "許可されていません")
-                    Text("端末の設定アプリから通知を許可してちょうだい。")
+                    Text("端末の設定アプリから通知を許可してください。")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 default:
@@ -48,6 +48,12 @@ struct SettingsView: View {
                             NotificationScheduler.rescheduleAll(context: modelContext)
                         }
                     }
+                }
+            } header: {
+                Text("通知")
+            } footer: {
+                if authorizationStatus == .authorized || authorizationStatus == .provisional {
+                    Text("期限ひとつにつき、設定した日数だけ前の日の朝\(NotificationScheduler.fireHour)時と、期限日当日の朝\(NotificationScheduler.fireHour)時の2回届きます。すでに過ぎている分は届きません。")
                 }
             }
 
