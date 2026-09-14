@@ -62,6 +62,8 @@ struct MaintenancePartFormView: View {
 
             Section {
                 Toggle("通知を有効にする", isOn: $notification)
+            } footer: {
+                Text("日数で管理している部品だけが通知の対象です。走行距離のみで管理している部品は通知されません。通知する時期は設定画面で変更できます。")
             }
 
             if isEditing {
@@ -108,6 +110,7 @@ struct MaintenancePartFormView: View {
             )
             modelContext.insert(newPart)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 
@@ -115,6 +118,7 @@ struct MaintenancePartFormView: View {
         if let part {
             modelContext.delete(part)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 }

@@ -28,6 +28,7 @@ struct BikeFormView: View {
     @State private var totalMileageText: String
     @State private var hasInspectionExpiryDate: Bool
     @State private var inspectionExpiryDate: Date
+    @State private var inspectionNotification: Bool
     @State private var memo: String
     @State private var archived: Bool
 
@@ -48,6 +49,7 @@ struct BikeFormView: View {
         _totalMileageText = State(initialValue: String(bike?.totalMileage ?? 0))
         _hasInspectionExpiryDate = State(initialValue: bike?.inspectionExpiryDate != nil)
         _inspectionExpiryDate = State(initialValue: bike?.inspectionExpiryDate ?? Date())
+        _inspectionNotification = State(initialValue: bike?.inspectionNotification ?? false)
         _memo = State(initialValue: bike?.memo ?? "")
         _archived = State(initialValue: bike?.archived ?? false)
     }
@@ -99,13 +101,20 @@ struct BikeFormView: View {
                     .keyboardType(.numberPad)
             }
 
-            Section("現在の状態") {
+            Section {
                 TextField("現在の走行距離(km)", text: $totalMileageText)
                     .keyboardType(.numberPad)
 
                 Toggle("車検満了日を設定", isOn: $hasInspectionExpiryDate)
                 if hasInspectionExpiryDate {
                     DatePicker("車検満了日", selection: $inspectionExpiryDate, displayedComponents: .date)
+                    Toggle("通知を有効にする", isOn: $inspectionNotification)
+                }
+            } header: {
+                Text("現在の状態")
+            } footer: {
+                if hasInspectionExpiryDate {
+                    Text("通知する時期は設定画面で変更できます。")
                 }
             }
 
@@ -174,6 +183,7 @@ struct BikeFormView: View {
             bike.mileageAtRegistration = mileageAtRegistration
             bike.totalMileage = totalMileage
             bike.inspectionExpiryDate = hasInspectionExpiryDate ? inspectionExpiryDate : nil
+            bike.inspectionNotification = hasInspectionExpiryDate && inspectionNotification
             bike.memo = memo
             bike.archived = archived
         } else {
@@ -188,10 +198,12 @@ struct BikeFormView: View {
                 mileageAtRegistration: mileageAtRegistration,
                 totalMileage: totalMileage,
                 inspectionExpiryDate: hasInspectionExpiryDate ? inspectionExpiryDate : nil,
+                inspectionNotification: hasInspectionExpiryDate && inspectionNotification,
                 memo: memo
             )
             modelContext.insert(newBike)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 
@@ -199,6 +211,7 @@ struct BikeFormView: View {
         if let bike {
             modelContext.delete(bike)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 }
