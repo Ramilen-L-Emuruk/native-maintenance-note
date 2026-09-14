@@ -115,6 +115,7 @@ struct MaintenanceRecordFormView: View {
             )
             modelContext.insert(newRecord)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 
@@ -122,6 +123,7 @@ struct MaintenanceRecordFormView: View {
         if let record {
             modelContext.delete(record)
         }
+        NotificationScheduler.rescheduleAll(context: modelContext)
         dismiss()
     }
 }
