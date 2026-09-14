@@ -101,7 +101,7 @@ struct BikeFormView: View {
                     .keyboardType(.numberPad)
             }
 
-            Section("現在の状態") {
+            Section {
                 TextField("現在の走行距離(km)", text: $totalMileageText)
                     .keyboardType(.numberPad)
 
@@ -109,6 +109,12 @@ struct BikeFormView: View {
                 if hasInspectionExpiryDate {
                     DatePicker("車検満了日", selection: $inspectionExpiryDate, displayedComponents: .date)
                     Toggle("通知を有効にする", isOn: $inspectionNotification)
+                }
+            } header: {
+                Text("現在の状態")
+            } footer: {
+                if hasInspectionExpiryDate {
+                    Text("通知する時期は設定画面で変更できます。")
                 }
             }
 
