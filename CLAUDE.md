@@ -39,6 +39,7 @@
 ビルドもテストも **Mac 上で実行する**（下記「開発構成」参照）。コマンドは「補助コマンド」節を参照。
 
 - **ビルド（必須）**: エラー 0 を確認する。
+- **大きめの変更では、警告をクリーンビルドで数える。** インクリメンタルビルドは変更のないファイルを再コンパイルしないため、**既存の警告がログに出ない**。「警告 0 件」を成果と受け取ると見落とす。やり方は「補助コマンド」節を参照。
 - **テスト（必須）**: `** TEST SUCCEEDED **` を確認する。
   **テストの件数と結果は xcresult から読む。** `xcodebuild` の生ログを `grep` で数えると実際と合わない。**取りこぼすことも、重複して数えることもある**——並列シミュレータ（`Clone N of ...`）の出力が同じ行に混ざって行が壊れる場合と、繰り返し実行されるテスト（パフォーマンス計測など）が複数回 `passed` 行を出す場合の両方を実測した。
 - **動作確認**: シミュレータの操作は `xcrun simctl` を SSH 越しに使う（`boot` / `io <udid> screenshot` / `listapps`）。画面を目視したいときはスクリーンショットを `scp` で取り寄せる。
@@ -120,7 +121,11 @@
 
 iOS のビルドには macOS が要るが、編集環境は Windows にある。この構成はそれを埋めるためのもの。**Mac 側では編集しない**——この規律だけで衝突が起きない。
 
-Mac は macOS 26.6.1 / Xcode 26.6 / iOS 26.5 SDK。実機（iPhone 15 Pro Max）は常時接続ではないため、GPS 等の実機検証を行うときに Mac へ繋ぐ。接続状況は `xcrun xctrace list devices`（オフラインの実機も列挙される）か `xcrun devicectl list devices` で確かめる。
+Mac は macOS 27.0 / Xcode 27.0 / iOS 27.0 SDK（2026-09-19 時点）。**バージョンは更新で変わる**ので、食い違っていたら `sw_vers -productVersion` / `xcodebuild -version` / `xcodebuild -showsdks` で引き直すこと。
+
+実機（iPhone 15 Pro Max）は常時接続ではないため、GPS 等の実機検証を行うときに Mac へ繋ぐ。接続状況は `xcrun xctrace list devices`（オフラインの実機も列挙される）か `xcrun devicectl list devices` で確かめる。
+
+**Xcode をメジャーアップデートした直後は、ライセンスに同意するまで `git` すら動かない**（`/usr/bin/git` が Xcode 経由のため）。`You have not agreed to the Xcode license agreements` が出たら、Mac 上で `sudo xcodebuild -license` を実行してもらう。SSH の非対話セッションからは同意できない。
 
 踏まえておくこと:
 
@@ -161,23 +166,33 @@ Mac は macOS 26.6.1 / Xcode 26.6 / iOS 26.5 SDK。実機（iPhone 15 Pro Max）
 
 ### 補助コマンド
 
-Mac 上で実行する。使うプレースホルダは 2 つ。
+Mac 上で実行する。使うプレースホルダは 4 つ。
 
 - **`<proj>`** — `.xcodeproj` の絶対パス。ワークツリーで作業中なら `<repo>/.claude/worktrees/<name>/NativeMaintenanceNote/NativeMaintenanceNote.xcodeproj`
 - **`<dd>`** — このワークツリー専用の DerivedData。`~/Library/Developer/Xcode/DerivedData/NMN-<name>` とする
+- **`<device>`** / **`<os>`** — シミュレータの機種名と OS バージョン。**固定値を持たず、下記の `-showdestinations` で毎回引く**
 
 **`-project` は絶対パスで渡す。** `ssh macmini "コマンド"` は毎回 `$HOME` を起点とする新しいシェルで動くため、`cd` を明示しない限り相対パスの基準がワークツリーにならない（`cd` してから渡せば相対パスでも通るが、`cd` 忘れの事故を避けるため絶対パスに統一する）。
 
 **`-derivedDataPath` を省かない。** 既定の DerivedData は `NativeMaintenanceNote-<ハッシュ>` という名前で、**どのワークツリーのものか名前から区別できない**。複数のワークツリーを並行して進めると（このプロジェクトの既定の進め方）、下記の xcresult 取得が **別のワークツリーの検証結果を掴む**。エラーは出ず、静かに誤った結果を報告することになる。
 
+**`-destination` には `OS=` を必ず入れる。** Xcode を更新するとシミュレータのランタイムが複数世代そろい、同じ名前のデバイスが両方に並ぶことがある。`name` だけ指定すると**新しい方のランタイムへ静かに寄せられ**、意図した OS と食い違っても「成功」としか出ないため気づけない。
+
+**`<device>` と `<os>` は毎回引き直す。** Xcode の更新でデバイスもランタイムも入れ替わるため、この文書には書かない:
+
+```
+xcodebuild -project <proj> -scheme NativeMaintenanceNote -showdestinations
+```
+
+`{ platform:iOS Simulator, arch:arm64, id:..., OS:<os>, name:<device> }` の形で **OS 付きで**返るので、そこから選ぶ。`xcrun simctl list devices available` でも一覧は出るが、OS とデバイスの対応が読み取りにくいので `-showdestinations` を使う。
+
 | 用途 | コマンド |
 |------|----------|
-| ビルド | `xcodebuild -project <proj> -derivedDataPath <dd> -scheme NativeMaintenanceNote -destination 'platform=iOS Simulator,name=iPhone 17' build` |
+| ビルド | `xcodebuild -project <proj> -derivedDataPath <dd> -scheme NativeMaintenanceNote -destination 'platform=iOS Simulator,name=<device>,OS=<os>' build` |
 | テスト | 上記の末尾 `build` を `test` に変える |
 | Release ビルド | 上記に `-configuration Release` を足す |
 | ユニットテストのみ | **テスト行**の末尾に `-only-testing:NativeMaintenanceNoteTests` を足す（`build` に足しても黙って無視される） |
-
-**実在するシミュレータは iPhone 17 / 17 Pro / 17 Pro Max / 17e / iPhone Air と iPad 各種（すべて iOS 26.5）。`iPhone 16` も `iPhone 16e` も存在しない。** 手元の一覧は `xcrun simctl list devices available` で確かめる。
+| 警告を数える | **`rm -rf <dd>` してから**ビルドする。インクリメンタルのままでは再コンパイルが走らず既存の警告が出ない（`grep -c "SwiftCompile normal"` が 0 ならその状態）。`<dd>` は消して同じパスへ作り直す——別パスを使うと下記の xcresult 取得がどこを見るか分からなくなる |
 
 `-quiet` は成功メッセージまで消すため使わない。出力はログへ落とし、成否は `grep -E "^\*\* (BUILD|TEST)"` で拾う。
 
