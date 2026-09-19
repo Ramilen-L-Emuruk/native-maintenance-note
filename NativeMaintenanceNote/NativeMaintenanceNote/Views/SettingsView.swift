@@ -43,8 +43,9 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 default:
                     Button("通知を許可する") {
-                        NotificationScheduler.requestAuthorization { _ in
-                            refreshAuthorizationStatus()
+                        Task {
+                            _ = await NotificationScheduler.requestAuthorization()
+                            await refreshAuthorizationStatus()
                             NotificationScheduler.rescheduleAll(context: modelContext)
                         }
                     }
@@ -64,7 +65,7 @@ struct SettingsView: View {
             }
         }
         .navigationTitle("設定")
-        .onAppear { refreshAuthorizationStatus() }
+        .task { await refreshAuthorizationStatus() }
         .fileImporter(isPresented: $isPresentingFileImporter, allowedContentTypes: [.json]) { result in
             handleFileSelection(result)
         }
@@ -151,10 +152,8 @@ struct SettingsView: View {
         }
     }
 
-    private func refreshAuthorizationStatus() {
-        NotificationScheduler.authorizationStatus { status in
-            authorizationStatus = status
-        }
+    private func refreshAuthorizationStatus() async {
+        authorizationStatus = await NotificationScheduler.authorizationStatus()
     }
 }
 

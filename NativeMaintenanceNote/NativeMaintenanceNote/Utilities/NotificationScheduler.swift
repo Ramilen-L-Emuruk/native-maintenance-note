@@ -22,14 +22,14 @@ import SwiftData
 import UserNotifications
 
 enum NotificationScheduler {
-    private static let logger = Logger(subsystem: "com.ramilen.NativeMaintenanceNote", category: "NotificationScheduler")
+    nonisolated private static let logger = Logger(subsystem: "com.ramilen.NativeMaintenanceNote", category: "NotificationScheduler")
 
     private static let leadDaysKey = "notificationLeadDays"
-    static let defaultLeadDays = 7
+    nonisolated static let defaultLeadDays = 7
     /// 通知を配信する時刻（時）。分は0に固定する。
-    static let fireHour = 9
+    nonisolated static let fireHour = 9
     /// iOSが1アプリあたりに保持する保留中ローカル通知の上限。これを超える分はOSが受け付けない。
-    static let maxPendingRequests = 64
+    nonisolated static let maxPendingRequests = 64
 
     static var leadDays: Int {
         get {
@@ -39,59 +39,85 @@ enum NotificationScheduler {
         set { UserDefaults.standard.set(newValue, forKey: leadDaysKey) }
     }
 
-    static func requestAuthorization(completion: ((Bool) -> Void)? = nil) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
-            if let error {
-                logger.error("通知の許可要求に失敗: \(error.localizedDescription, privacy: .public)")
-            }
-            DispatchQueue.main.async { completion?(granted) }
+    /// 通知の許可を求め、許可されたかを返す。
+    @MainActor
+    static func requestAuthorization() async -> Bool {
+        do {
+            return try await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge])
+        } catch {
+            logger.error("通知の許可要求に失敗: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 
-    static func authorizationStatus(completion: @escaping (UNAuthorizationStatus) -> Void) {
-        UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.async { completion(settings.authorizationStatus) }
-        }
+    @MainActor
+    static func authorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
     }
 
     /// 既存の予約通知をすべて破棄し、現在のデータから再構築する。
-    /// getNotificationSettingsの completion はバックグラウンドキューで呼ばれるため、
-    /// SwiftDataのModelContext（メインアクター）へ触れる処理は必ずメインスレッドへ戻す。
+    ///
+    /// 呼び出し側を同期のままにするためTaskで包む。中身はMainActor上で動くので、
+    /// SwiftDataのModelContext（Sendableではない）へそのまま触れる。
+    ///
+    /// 短い間隔で複数回呼ばれても、破棄と発行の一連が中断しないため
+    /// 最後の呼び出しの内容に収束する（理由は publish の実装コメント）。
+    @MainActor
     static func rescheduleAll(context: ModelContext) {
+        Task { await rescheduleAllAsync(context: context) }
+    }
+
+    @MainActor
+    private static func rescheduleAllAsync(context: ModelContext) async {
         let center = UNUserNotificationCenter.current()
-        center.getNotificationSettings { settings in
-            DispatchQueue.main.async {
-                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
-                    logger.notice("通知が許可されていないため、予約済みの通知をすべて取り消した")
-                    center.removeAllPendingNotificationRequests()
-                    return
-                }
-                let items: [ReminderItem]
-                do {
-                    items = try buildItems(context: context, leadDays: leadDays)
-                } catch {
-                    // 取得に失敗した状態で組み直すと、正しく予約できていた他の種別まで巻き添えで消える。
-                    // 既存の予約を残したまま今回の再構築を見送り、次の機会に作り直す。
-                    //
-                    // この中断経路は自動テストで検証できていない。ModelContextのfetchを
-                    // 意図的に失敗させる手段がなく、検証にはUNUserNotificationCenterの抽象化が要るため。
-                    // ここを触るときは手動で確かめること。
-                    logger.error("通知の再構築を中止し、既存の予約を維持した: \(error.localizedDescription, privacy: .public)")
-                    return
-                }
-                center.removeAllPendingNotificationRequests()
-                for item in items {
-                    center.add(item.makeRequest()) { error in
-                        if let error {
-                            logger.error("通知の予約に失敗(\(item.identifier, privacy: .public)): \(error.localizedDescription, privacy: .public)")
-                        }
-                    }
+        let status = await center.notificationSettings().authorizationStatus
+        guard status == .authorized || status == .provisional else {
+            logger.notice("通知が許可されていないため、予約済みの通知をすべて取り消した")
+            center.removeAllPendingNotificationRequests()
+            return
+        }
+        let items: [ReminderItem]
+        do {
+            items = try buildItems(context: context, leadDays: leadDays)
+        } catch {
+            // 取得に失敗した状態で組み直すと、正しく予約できていた他の種別まで巻き添えで消える。
+            // 既存の予約を残したまま今回の再構築を見送り、次の機会に作り直す。
+            //
+            // この中断経路は自動テストで検証できていない。ModelContextのfetchを
+            // 意図的に失敗させる手段がなく、検証にはUNUserNotificationCenterの抽象化が要るため。
+            // ここを触るときは手動で確かめること。
+            logger.error("通知の再構築を中止し、既存の予約を維持した: \(error.localizedDescription, privacy: .public)")
+            return
+        }
+        publish(items, to: center)
+    }
+
+    /// 予約済みの通知をすべて破棄し、itemsを発行する。
+    ///
+    /// **この関数をasyncにしてはいけない。** 破棄と発行の間で実行権を手放すと、
+    /// その隙に別の再構築が割り込んで removeAll を呼び、双方のitemsが混ざった状態が残る
+    /// （@MainActorでもサスペンド中は実行権を手放すため）。
+    /// 同期のまま一連を終えることで、短い間隔で複数回呼ばれても最後の内容に収束する。
+    /// addにcompletion handler版を使っているのはそのため。
+    ///
+    /// **addのcompletionはSwift 6のSendableチェックの対象外。** UNUserNotificationCenterの
+    /// ObjC APIに並行性の注釈がないため、コンパイラは判定していない（警告が出ないことは
+    /// 安全の証明にならない）。しかも呼ばれるスレッドは保証されていない。
+    /// ここで捕捉してよいのは値型・Sendableなものだけ——MainActor専有の可変状態を
+    /// 触るコードを足さないこと。
+    @MainActor
+    private static func publish(_ items: [ReminderItem], to center: UNUserNotificationCenter) {
+        center.removeAllPendingNotificationRequests()
+        for item in items {
+            center.add(item.makeRequest()) { error in
+                if let error {
+                    logger.error("通知の予約に失敗(\(item.identifier, privacy: .public)): \(error.localizedDescription, privacy: .public)")
                 }
             }
         }
     }
 
-    struct ReminderItem: Equatable {
+    nonisolated struct ReminderItem: Equatable {
         let identifier: String
         let title: String
         let body: String
@@ -113,7 +139,7 @@ enum NotificationScheduler {
     }
 
     /// 満了日/期限日からリード日数を引き、通知時刻（fireHour時00分）へ丸めた日時を返す。
-    static func scheduledFireDate(for dueDate: Date, leadDays: Int, calendar: Calendar = .current) -> Date? {
+    nonisolated static func scheduledFireDate(for dueDate: Date, leadDays: Int, calendar: Calendar = .current) -> Date? {
         guard let leadDate = calendar.date(byAdding: .day, value: -leadDays, to: dueDate) else {
             logger.error("通知予定日の算出に失敗: leadDays=\(leadDays)")
             return nil
@@ -129,7 +155,7 @@ enum NotificationScheduler {
     }
 
     /// 整備部品の周期（intervalDays）から次回目安日を求める。最終整備記録がなければ計算不能。
-    static func nextMaintenanceDueDate(lastMaintenanceDate: Date, intervalDays: Int, calendar: Calendar = .current) -> Date? {
+    nonisolated static func nextMaintenanceDueDate(lastMaintenanceDate: Date, intervalDays: Int, calendar: Calendar = .current) -> Date? {
         calendar.date(byAdding: .day, value: intervalDays, to: lastMaintenanceDate)
     }
 
@@ -140,7 +166,7 @@ enum NotificationScheduler {
     /// 「予定日を過ぎていたら期限日へ寄せる」方式だと、リード日を過ぎたあとにアプリを
     /// 開いたかどうかで届く回数が変わる（開けば2回・開かなければ1回）。
     /// どちらの日時もdueDateとleadDaysだけから決まるので、何度組み直しても結果は同じ。
-    static func makeReminders(
+    nonisolated static func makeReminders(
         identifierPrefix: String,
         leadTitle: String,
         dueTitle: String,
@@ -269,7 +295,7 @@ enum NotificationScheduler {
         }
     }
 
-    private static func dateString(_ date: Date) -> String {
+    nonisolated private static func dateString(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateStyle = .medium
         formatter.locale = Locale(identifier: "ja_JP")
