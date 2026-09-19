@@ -282,28 +282,22 @@ enum BackupImporter {
 
     // MARK: - 日付
 
-    private static let dateFormatter: DateFormatter = {
+    /// DateFormatterはSendableではないため、共有インスタンスを持たず呼び出しごとに作る。
+    /// インポートは利用者が明示的に実行する一度きりの操作なので、生成コストより扱いの安全さを取る。
+    nonisolated private static func makeFormatter(_ format: String) -> DateFormatter {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.dateFormat = format
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone.current
         return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone.current
-        return formatter
-    }()
-
-    static func parseDate(_ string: String) -> Date? {
-        dateFormatter.date(from: string)
     }
 
-    static func combinedDate(dateString: String, timeString: String) -> Date? {
-        guard let day = parseDate(dateString), let time = timeFormatter.date(from: timeString) else { return nil }
+    nonisolated static func parseDate(_ string: String) -> Date? {
+        makeFormatter("yyyy-MM-dd").date(from: string)
+    }
+
+    nonisolated static func combinedDate(dateString: String, timeString: String) -> Date? {
+        guard let day = parseDate(dateString), let time = makeFormatter("HH:mm").date(from: timeString) else { return nil }
         let calendar = Calendar.current
         var components = calendar.dateComponents([.year, .month, .day], from: day)
         let timeComponents = calendar.dateComponents([.hour, .minute], from: time)
