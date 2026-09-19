@@ -6,10 +6,14 @@
 //  燃費計算方式)。SwiftDataに依存しない素のSwift実装にして、
 //  ModelContainerなしでユニットテストできるようにしている。
 //
+//  このファイルの型はUIから独立した純粋計算なので nonisolated にする。
+//  ターゲット既定の SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor に任せると、
+//  sorted(by:) のような非分離の高階関数へ関数値として渡せない。
+//
 
 import Foundation
 
-struct FuelEconomySample: Identifiable, Equatable {
+nonisolated struct FuelEconomySample: Identifiable, Equatable {
     let id: UUID
     let date: Date
     let previousMileage: Int
@@ -40,7 +44,7 @@ struct FuelEconomySample: Identifiable, Equatable {
     }
 }
 
-enum FuelEconomyCalculator {
+nonisolated enum FuelEconomyCalculator {
     struct ChartPoint {
         let date: Date
         let economy: Double
