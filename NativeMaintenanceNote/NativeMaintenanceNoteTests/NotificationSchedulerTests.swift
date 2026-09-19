@@ -11,6 +11,7 @@ import Foundation
 import SwiftData
 @testable import NativeMaintenanceNote
 
+@MainActor
 struct NotificationSchedulerTests {
 
     private let calendar = Calendar(identifier: .gregorian)

@@ -8,6 +8,7 @@ import Foundation
 import SwiftData
 @testable import NativeMaintenanceNote
 
+@MainActor
 struct BackupImporterTests {
 
     private func makeContext() throws -> ModelContext {
