@@ -135,13 +135,17 @@
 
 1. ~~実機での Background Modes（GPS）検証を最優先で実施し、無料/有料判断を確定させる~~（完了。§4・§7参照。無料 Personal Teamのまま進める判断）
 2. `planner` エージェント or 計画モードで、以下のフェーズ分割を実装計画に落とし込む
-   - データモデル（SwiftData）設計
-   - 基本CRUD画面の実装
-   - 燃費計算・グラフ（Swift Charts）
-   - 通知機能（UserNotifications）
+   - ~~データモデル（SwiftData）設計~~（完了）
+   - ~~基本CRUD画面の実装~~（完了。バイク・整備記録・保険記録）
+   - ~~燃費計算・グラフ（Swift Charts）~~（完了）
+   - ~~通知機能（UserNotifications）~~（完了。積み残しは 5.）
    - GPSロギング本実装（今回検証したSignificant-Changeに加えて、Core Motion連携・移動検知後の継続的位置情報更新を実装。検証用の`LocationLogger.swift`/`LocationVerificationView.swift`は本実装に置き換える想定）
    - Cloudflare Workers + D1 の同期API構築
    - Liquid Glass デザインの磨き込み
    - AltStore Classic での配布設定
-3. 既存 Web版のエクスポート機能でデータをバックアップし、SwiftData への移行パスを確認する
+3. 既存 Web版のエクスポート機能でデータをバックアップし、SwiftData への移行パスを確認する（バックアップ JSON の取り込みは実装済み。`Utilities/BackupImporter.swift`）
 4. ~~このリポジトリ用の CLAUDE.md を作成する~~（完了）
+5. 通知機能の積み残し
+   - 走行距離だけの周期（`MaintenancePart.intervalDistance`）は通知の対象外。ローカル通知は日時でしか予約できないため、別の仕組みが要る
+   - データの取得に失敗したときに既存の予約を残す分岐は、自動テストで確かめていない（`UNUserNotificationCenter` の抽象化が要る）
+   - 保留中の通知の上限（1 アプリ 64 件）を超えて予約できなかった分を利用者へ伝えるかは未決（ユーザー判断待ち）
