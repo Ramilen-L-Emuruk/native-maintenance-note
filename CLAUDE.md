@@ -125,6 +125,8 @@ Mac は macOS 27.0 / Xcode 27.0 / iOS 27.0 SDK（2026-09-19 時点）。**バー
 
 実機（iPhone 15 Pro Max）は常時接続ではないため、GPS 等の実機検証を行うときに Mac へ繋ぐ。接続状況は `xcrun xctrace list devices`（オフラインの実機も列挙される）か `xcrun devicectl list devices` で確かめる。
 
+**機種名は思い出しで書かず、`xcrun devicectl list devices` の表示で確かめる。** 内部識別子の世代の数字はマーケティング名と一致しない。
+
 **Xcode をメジャーアップデートした直後は、ライセンスに同意するまで `git` すら動かない**（`/usr/bin/git` が Xcode 経由のため）。`You have not agreed to the Xcode license agreements` が出たら、Mac 上で `sudo xcodebuild -license` を実行してもらう。SSH の非対話セッションからは同意できない。
 
 踏まえておくこと:
@@ -218,3 +220,7 @@ xcrun xcresulttool get test-results tests --path "$B"
 - `docs/HANDOFF.md`: Web版からの移行検討メモ（動機・設計判断・未解決事項）。
 - Bundle Identifier: `com.ramilen.NativeMaintenanceNote`（固定・変更しない。理由は `docs/HANDOFF.md` §3.1 参照）。
 - 配布方法: AltStore Classic（無料 Apple ID）を想定。詳細は `docs/HANDOFF.md` §3 参照。
+- 言語モード: Swift 6（全ターゲットで `SWIFT_VERSION = 6.0`）。アクター分離違反はコンパイルエラーになる。
+  - アプリ本体は `SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor` だが、テストターゲットには無い。MainActor 分離のものを呼ぶテストには `@MainActor` を付ける。
+  - 純粋計算は `nonisolated` にする（`FuelEconomyCalculator`、`NotificationScheduler` の日時計算など）。`ModelContext` に触るものは MainActor のまま置き、`nonisolated` にしない。
+  - `UNUserNotificationCenter` の completion handler は Sendable チェックの対象外（ObjC API に並行性の注釈がない）。警告が出なくても安全とは限らないので、捕捉するのは値型・Sendable なものに限る（`Utilities/NotificationScheduler.swift` の `publish`）。
